@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Rose Garden</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #1a1a2e;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: 'Arial', sans-serif;
+        }
+        #canvas-container {
+            width: 100%;
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: center;
+            position: relative;
+        }
+        #instructions {
+            position: absolute;
+            bottom: 20px;
+            color: rgba(255, 255, 255, 0.6);
+            text-align: center;
+            width: 100%;
+            font-size: 14px;
+            pointer-events: none;
+            transition: opacity 2s;
+        }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/p5@1.8.0/lib/p5.js"></script>
+
+<base target="_self">
+</head>
+<body>
+    <div id="canvas-container"></div>
+    <div id="instructions">Move your cursor to interact with the roses<br>Click to plant new roses</div>
+
+    <script>
+        const sketch = (p) => {
+            let roses = [];
+            let bgGraphics;
+            let colorPalettes = [
+                ['#ff5e78', '#ff9966', '#ffcc33', '#99ff33', '#33ffcc'],
+                ['#e63946', '#f1faee', '#a8dadc', '#457b9d', '#1d3557'],
+                ['#ffbe0b', '#fb5607', '#ff006e', '#8338ec', '#3a86ff'],
+                ['#f72585', '#b5179e', '#7209b7', '#560bad', '#480ca8']
+            ];
+            let currentPalette = 0;
+            let wind = 0;
+            let lastInteractionTime = 0;
+            let showInstructions = true;
+
+            p.setup = () => {
+                let canvas = p.createCanvas(p.min(p.windowWidth, 1200), p.min(p.windowHeight, 800));
+                canvas.parent('canvas-container');
+                p.colorMode(p.HSB, 360, 100, 100, 1);
+                p.noStroke();
+                
+                createBackground();
+                
+                // Create initial roses
+                for (let i = 0; i < 5; i++) {
+                    roses.push(new Rose(
+                        p.random(p.width * 0.2, p.width * 0.8),
+                        p.random(p.height * 0.2, p.height * 0.8),
+                        p.random(0.8, 1.2)
+                    ));
+                }
+                
+                setTimeout(() => { showInstructions = false; }, 5000);
+            };
+
+            function createBackground() {
+                bgGraphics = p.createGraphics(p.width, p.height);
+                bgGraphics.colorMode(p.HSB, 360, 100, 100, 1);
+                
+                // Create gradient background
+                for (let y = 0; y < p.height; y++) {
+                    let inter = p.map(y, 0, p.height, 0, 1);
+                    let c = p.lerpColor(
+                        p.color(240, 50, 10),
+                        p.color(280, 80, 30),
+                        inter
+                    );
+                    bgGraphics.stroke(c);
+                    bgGraphics.line(0, y, p.width, y);
+                }
+                
+                // Add subtle noise
+                bgGraphics.loadPixels();
+                for (let i = 0; i < bgGraphics.pixels.length; i += 4) {
+                    if (i % 16 === 0) {
+                        let noiseVal = p.random(-5, 5);
+                        bgGraphics.pixels[i] += noiseVal;
+                        bgGraphics.pixels[i+1] += noiseVal;
+                        bgGraphics.pixels[i+2] += noiseVal;
+                    }
+                }
+                bgGraphics.updatePixels();
+            }
+
+            p.draw = () => {
+                // Update wind with Perlin noise for organic movement
+                wind = p.map(p.noise(p.frameCount * 0.01), 0, 1, -0.5, 0.5);
+                
+                // Draw background
+                p.image(bgGraphics, 0, 0);
+                
+                // Draw all roses
+                for (let rose of roses) {
+                    rose.update();
+                    rose.display();
+                }
+                
+                // Fade out instructions after interaction
+                if (p.millis() - lastInteractionTime > 3000 && showInstructions) {
+                    showInstructions = false;
+                }
+                
+                if (showInstructions) {
+                    p.push();
+                    p.fill(255, 255, 255, p.map(p.sin(p.frameCount * 0.05), -1, 1, 0.3, 0.7));
+                    p.textSize(14);
+                    p.textAlign(p.CENTER);
+                    p.text("Move your cursor to interact with the roses\nClick to plant new roses", p.width/2, p.height - 30);
+                    p.pop();
+                }
+            };
+
+            p.mousePressed = () => {
+                lastInteractionTime = p.millis();
+                showInstructions = false;
+                
+                // Add new rose at mouse position
+                roses.push(new Rose(p.mouseX, p.mouseY, p.random(0.8, 1.2)));
+                
+                // Limit number of roses
+                if (roses.length > 15) {
+                    roses.splice(0, 1);
+                }
+                
+                // Change color palette occasionally
+                if (p.random() > 0.7) {
+                    currentPalette = (currentPalette + 1) % colorPalettes.length;
+                }
+            };
+
+            p.mouseMoved = () => {
+                lastInteractionTime = p.millis();
+            };
+
+            p.windowResized = () => {
+                p.resizeCanvas(p.min(p.windowWidth, 1200), p.min(p.windowHeight, 800));
+                createBackground();
+            };
+
+            class Rose {
+                constructor(x, y, scale) {
+                    this.pos = p.createVector(x, y);
+                    this.scale = scale;
+                    this.petals = [];
+                    this.angle = p.random(p.TWO_PI);
+                    this.rotationSpeed = p.random(-0.01, 0.01);
+                    this.hue = p.random(330, 360);
+                    this.saturation = p.random(70, 90);
+                    this.brightness = p.random(80, 100);
+                    this.stemLength = p.random(100, 150) * scale;
+                    this.stemCurve = p.random(-0.5, 0.5);
+                    this.createPetals();
+                }
+
+                createPetals() {
+                    let petalCount = p.floor(p.random(15, 25));
+                    let centerSize = p.random(10, 20) * this.scale;
+                    
+                    for (let i = 0; i < petalCount; i++) {
+                        let angle = p.map(i, 0, petalCount, 0, p.TWO_PI);
+                        let distance = centerSize + p.random(10, 40) * this.scale;
+                        let size = p.random(30, 60) * this.scale;
+                        let petalHue = this.hue + p.random(-10, 10);
+                        
+                        this.petals.push({
+                            angle: angle,
+                            baseAngle: angle,
+                            distance: distance,
+                            size: size,
+                            hue: petalHue,
+                            sat: this.saturation,
+                            bri: this.brightness,
+                            noiseOffset: p.random(1000)
+                        });
+                    }
+                }
+
+                update() {
+                    this.angle += this.rotationSpeed;
+                    
+                    // React to mouse proximity
+                    let mouseDist = p.dist(p.mouseX, p.mouseY, this.pos.x, this.pos.y);
+                    let mouseInfluence = p.constrain(p.map(mouseDist, 0, 300, 1, 0), 0, 1);
+                    
+                    // Update petals with wind and mouse influence
+                    for (let petal of this.petals) {
+                        let noiseVal = p.noise(petal.noiseOffset + p.frameCount * 0.01);
+                        petal.angle = petal.baseAngle + 
+                                        wind * 0.5 + 
+                                        p.sin(p.frameCount * 0.05 + petal.noiseOffset) * 0.2 +
+                                        mouseInfluence * p.sin(p.frameCount * 0.1) * 0.5;
+                        
+                        petal.noiseOffset += 0.01;
+                    }
+                }
+
+                display() {
+                    p.push();
+                    p.translate(this.pos.x, this.pos.y);
+                    p.rotate(this.angle);
+                    
+                    // Draw stem
+                    p.push();
+                    p.stroke(100, 40, 40);
+                    p.strokeWeight(5 * this.scale);
+                    p.noFill();
+                    p.beginShape();
+                    p.vertex(0, 0);
+                    p.bezierVertex(
+                        this.stemCurve * 50, this.stemLength * 0.3,
+                        this.stemCurve * 30, this.stemLength * 0.7,
+                        0, this.stemLength
+                    );
+                    p.endShape();
+                    p.pop();
+                    
+                    // Draw leaves
+                    this.drawLeaf(0, this.stemLength * 0.5, 1);
+                    this.drawLeaf(0, this.stemLength * 0.7, -1);
+                    
+                    // Draw petals
+                    for (let petal of this.petals) {
+                        let x = p.cos(petal.angle) * petal.distance;
+                        let y = p.sin(petal.angle) * petal.distance;
+                        
+                        p.push();
+                        p.translate(x, y);
+                        p.rotate(petal.angle);
+                        
+                        let petalColor = p.color(
+                            petal.hue,
+                            petal.sat,
+                            petal.bri,
+                            0.9
+                        );
+                        
+                        p.fill(petalColor);
+                        p.noStroke();
+                        
+                        // Draw petal shape
+                        p.beginShape();
+                        p.vertex(0, 0);
+                        p.bezierVertex(
+                            petal.size * 0.5, -petal.size * 0.3,
+                            petal.size * 0.8, 0,
+                            petal.size * 0.5, petal.size * 0.3
+                        );
+                        p.bezierVertex(
+                            0, petal.size * 0.2,
+                            -petal.size * 0.2, 0,
+                            0, 0
+                        );
+                        p.endShape(p.CLOSE);
+                        
+                        p.pop();
+                    }
+                    
+                    // Draw center
+                    p.fill(this.hue, this.saturation + 10, this.brightness - 20);
+                    p.ellipse(0, 0, 20 * this.scale, 20 * this.scale);
+                    
+                    p.pop();
+                }
+
+                drawLeaf(x, y, direction) {
+                    p.push();
+                    p.translate(x, y);
+                    p.scale(direction, 1);
+                    
+                    let leafColor = p.color(120, 60, 40);
+                    p.fill(leafColor);
+                    p.noStroke();
+                    
+                    p.beginShape();
+                    p.vertex(0, 0);
+                    p.bezierVertex(
+                        30 * this.scale, -20 * this.scale,
+                        50 * this.scale, 0,
+                        30 * this.scale, 30 * this.scale
+                    );
+                    p.bezierVertex(
+                        10 * this.scale, 20 * this.scale,
+                        5 * this.scale, 10 * this.scale,
+                        0, 0
+                    );
+                    p.endShape(p.CLOSE);
+                    
+                    // Leaf veins
+                    p.stroke(120, 40, 30);
+                    p.strokeWeight(1);
+                    p.line(0, 0, 25 * this.scale, 5 * this.scale);
+                    p.line(25 * this.scale, 5 * this.scale, 40 * this.scale, 15 * this.scale);
+                    p.line(25 * this.scale, 5 * this.scale, 20 * this.scale, -10 * this.scale);
+                    
+                    p.pop();
+                }
+            }
+        };
+
+        new p5(sketch);
+    </script>
+</body>
+</html>
